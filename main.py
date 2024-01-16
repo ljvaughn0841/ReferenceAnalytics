@@ -15,19 +15,70 @@ def create_class_dict(raw_response):
     output = []
     for course in raw_response.json():
         if course.get('teachers'):
-            # teacher = course['teachers'][0]['display_name']
-            # teacher = {'name': course['teachers'].display_name()}
-            # output.append(teacher)
-            # class_id = course['id']
-            # print(class_id)
-            # class_name = course['name']
-            # print(class_name)
             course_data = {'course_id': course['id'],
                            'course_name': course['name'],
                            'instructor': course['teachers'][0]['display_name']
                            }
             output.append(course_data)
     return output
+
+
+def create_assignment_dict(course_dict):
+    # Time for Assignments
+
+    course_assignments = {}
+    for course in course_dict:
+        assignment_list = requests.get("https://" + school_domain_name + "/api/v1/courses/" + str(course['course_id']) +
+                                       "/assignments?per_page=1000&include[]=submission&include[]=score_statistics",
+                                       headers=headers).json()
+
+        # print(json.dumps(assignment_list, indent=2))
+
+        if course['course_id'] not in course_assignments:
+            course_assignments[course['course_id']] = {}
+
+        # now we save all this info like we did for the classes
+        # We have a dictionary for the class using class id
+        # In that we have a dictionary for each assignment with the variables like score and such
+
+        for assignment in assignment_list:
+
+            score_stats = assignment.get('score_statistics', {})
+            submission_stats = assignment.get('submission', {})
+
+            if submission_stats.get('score') is not None:
+                course_assignments[course['course_id']][assignment['name']] = {
+                    'due_date': assignment['due_at'],
+                    'score': assignment['submission']['score'],
+                    'mean': score_stats.get('mean', None),
+                    'upper': score_stats.get('upper_q', None),
+                    'lower': score_stats.get('lower_q', None),
+                    'group_id': assignment['assignment_group_id'],
+                }
+
+    pprint.pprint(course_assignments)
+    return course_assignments
+
+
+def get_assignment_groups(course_list):
+    group_list = []
+    for course in course_list:
+        assignment_group_response = requests.get(
+            "https://" + school_domain_name + "/api/v1/courses/" + str(course['course_id']) + "/assignment_groups",
+            headers=headers)
+        for group in assignment_group_response.json():
+            group_data = {'course_id': course['course_id'],
+                          'group_id': group['id'],
+                          'group_name': group['name'],
+                          'group_weight': group['group_weight']
+                          }
+            group_list.append(group_data)
+    return group_list
+
+
+def curate_course_list(course_list, valid_instructors):
+    filtered_courses = [course for course in course_list if course['instructor'] in valid_instructors]
+    return filtered_courses
 
 
 if __name__ == '__main__':
@@ -42,43 +93,15 @@ if __name__ == '__main__':
 
     class_dictionary = create_class_dict(courses_response)
 
-    # print(class_dictionary)
+    # We don't need to collect data on every instructor since a lot of them are Gen Ed
+    class_dictionary = curate_course_list(class_dictionary,
+                                          ['Paul Allen', 'Fernando Gonzalez', 'Scott Vanselow', 'Josiah Greenwell'])
 
-    # Time for Assignments and score statistics :)
-    # Making a separate table since I think it will be easier to work with
-    course_assignments = {}
-    for course in class_dictionary:
-        assignment_list = requests.get("https://" + school_domain_name + "/api/v1/courses/" + str(course['course_id']) +
-                                        "/assignments?per_page=1000&include[]=submission&include[]=score_statistics",
-                                        headers=headers).json()
+    assignment_groups = get_assignment_groups(class_dictionary)
 
-        # print(json.dumps(assignment_list, indent=2))
+    pprint.pprint(assignment_groups)
 
-        if course['course_id'] not in course_assignments:
-            course_assignments[course['course_id']] = {}
-        # now we save all this info like we did for the classes
-        # Data we are after
-        #   course[course_id]
-        #   "cached_due_date": "2021-02-08T04:59:00Z", ONLY SAVE FIRST 10 DIGITS (remove the exact time)
-        #   score_statistics
-        #   submission score
-
-        # we have a dictionary for the class using class id
-        # In that we have a dictionary for each assignment with the variables like score and such
-
-        for assignment in assignment_list:
-
-            score_stats = assignment.get('score_statistics', {})
-            submission_stats = assignment.get('submission', {})
-
-            if submission_stats.get('score') is not None:
-                course_assignments[course['course_id']][assignment['name']] = {
-                    'due_date': assignment['due_at'],
-                    'score': assignment['submission']['score'],
-                    'mean': score_stats.get('mean', None),
-                    'upper': score_stats.get('upper_q', None),
-                }
-    pprint.pprint(course_assignments)
+    assignments = create_assignment_dict(class_dictionary)
 
     # I'm more familiar with data analysis in R, so I'm exporting some tables to work on there
     # May later add some data analysis here in python if I have time
@@ -88,10 +111,11 @@ if __name__ == '__main__':
     # Export CSV
     df.to_csv('Class_Data.csv', index=False)
 
+    # Assignment CSV
     # Flatten the nested structure for export
     flat_data = []
 
-    for course_id, assignments in course_assignments.items():
+    for course_id, assignments in assignments.items():
         for assignment_name, details in assignments.items():
             row = {
                 "CourseID": course_id,
@@ -99,7 +123,8 @@ if __name__ == '__main__':
                 "DueDate": details['due_date'],
                 "Score": details['score'],
                 "Mean": details['mean'],
-                "Upper": details['upper']
+                "Upper": details['upper'],
+                "Lower": details['lower']
             }
             flat_data.append(row)
 
@@ -108,6 +133,10 @@ if __name__ == '__main__':
 
     # Export to CSV
     df.to_csv('course_assignments_data.csv', index=False)
+
+    # Converting assignment groups
+    df = pd.DataFrame(assignment_groups)
+    df.to_csv('assignment_groups.csv', index=False)
 
     # Some data chart ideas
     #   a line graph that shows points scored over time ( me vs. the mean or median, and upper quadrant)
