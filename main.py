@@ -65,8 +65,8 @@ def get_assignment_groups(course_list):
     group_list = []
     for course in course_list:
         assignment_group_response = requests.get(
-            "https://" + school_domain_name + "/api/v1/courses/" + str(course['course_id']) + "/assignment_groups",
-            headers=headers)
+            "https://" + school_domain_name + "/api/v1/courses/" + str(course['course_id']) + "/assignment_groups" +
+            "?per_page=100", headers=headers)
         for group in assignment_group_response.json():
             group_data = {'course_id': course['course_id'],
                           'group_id': group['id'],

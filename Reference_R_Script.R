@@ -55,22 +55,38 @@ calculate_true_score <- function(course_assignments, assignment_groups) {
     all.x = FALSE
   )
   
-  # Calculate the relative score for each assignment
+  # Calculate the relative score statistics for each assignment
   merged_data$relative_score <- (merged_data$score / merged_data$maximum) * 
     merged_data$group_weight /
-    ave(merged_data$group_weight, merged_data$group_weight, FUN = length)
+    ave(merged_data$group_weight, 
+        interaction(merged_data$course_id, 
+                    merged_data$group_name, 
+                    merged_data$group_weight), 
+        FUN = length)
   
   merged_data$relative_mean <- (merged_data$mean / merged_data$maximum) * 
     merged_data$group_weight /
-    ave(merged_data$group_weight, merged_data$group_weight, FUN = length)
+    ave(merged_data$group_weight, 
+        interaction(merged_data$course_id, 
+                    merged_data$group_name, 
+                    merged_data$group_weight), 
+        FUN = length)
   
   merged_data$relative_upper <- (merged_data$upper / merged_data$maximum) * 
     merged_data$group_weight /
-    ave(merged_data$group_weight, merged_data$group_weight, FUN = length)
+    ave(merged_data$group_weight, 
+        interaction(merged_data$course_id, 
+                    merged_data$group_name, 
+                    merged_data$group_weight), 
+        FUN = length)
   
   merged_data$relative_lower <- (merged_data$lower / merged_data$maximum) * 
     merged_data$group_weight /
-    ave(merged_data$group_weight, merged_data$group_weight, FUN = length)
+    ave(merged_data$group_weight, 
+        interaction(merged_data$course_id, 
+                    merged_data$group_name, 
+                    merged_data$group_weight), 
+        FUN = length)
   
   return(merged_data)
 }
@@ -92,15 +108,15 @@ merged_data <- merge(
 )
 
 
-CDA3104 <- split_assignments$'524901'
+CEN3073 <- split_assignments$'529829'
 
-testCDA <- calculate_true_score(CDA3104, assignment_groups)
+testCEN <- calculate_true_score(CEN3073, assignment_groups)
 
-ave(CDA3104$group_weight, CDA3104$group_weight, FUN = length)
+ave(CEN3073$group_weight, CEN3073$group_weight, FUN = length)
 
-sum(testCDA$relative_mean)
-sum(testCDA$relative_upper)
-sum(testCDA$relative_lower)
+sum(testCEN$relative_mean)
+sum(testCEN$relative_upper)
+sum(testCEN$relative_lower)
 
 
 # TEST GROUP STUFF
@@ -132,13 +148,13 @@ for (course_id in names(split_assignments)) {
 }
 
 # testing sum of id
-sum(split_assignments[[as.character(529829)]]$true_score)
+sum(split_assignments[[as.character(529829)]]$relative_upper)
 
 
 
 # stuff
 
-result <- calculate_cumulative_totals(CDA3104)
+result <- calculate_cumulative_totals(CEN3073)
 
 result_long <- result %>%
   gather(key = "ScoreType", value = "CumulativeValue", CumulativeScore, CumulativeMean, CumulativeUpper) %>%
@@ -164,7 +180,7 @@ ggplot(result, aes(x = due_date)) +
                 color = "Upper"),
             linetype = "dotted",
             size = 1) +
-  labs(title = "CDA3104 Cumalitive Score over Time",
+  labs(title = "CEN3073 Cumalitive Score over Time",
        x = "Date",
        y = "Cumulative Score",
        color = "") +
