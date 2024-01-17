@@ -3,9 +3,10 @@
 # Install and load necessary packages
 install.packages("dplyr")
 install.packages("ggplot2")
+install.packages("tidyr")
 library(dplyr)
 library(ggplot2)
-
+library(tidyr)
 
 # Note: Certain courses might not make statistics freely available.
 #       If your getting strange results check to see if the metrics are
@@ -15,31 +16,9 @@ library(ggplot2)
 
 ## FUNCTIONS ##
 
-# Define a function for cumulative totals calculation
-# !!! TODO !!! USE TRUE SCORE INSTEAD !!!!
-calculate_cumulative_totals <- function(input_data) {
-  # Convert 'due_date' to a Date type
-  input_data$due_date <- as.Date(input_data$due_date)
-  
-  # Sort the data by 'due_date' to ensure proper cumulative calculation
-  input_data <- input_data %>%
-    arrange(due_date)
-  
-  # Calculate cumulative totals for 'Score', 'Mean', and 'Upper'
-  result_data <- input_data %>%
-    mutate(
-      CumulativeScore = cumsum(Score),
-      CumulativeMean = cumsum(Mean),
-      CumulativeUpper = cumsum(Upper)
-    )
-  
-  return(result_data)
-}
-
-
 
 calculate_true_score <- function(course_assignments, assignment_groups) {
-  # Calculates the true score value's for assignments in the course.
+  # Calculates the relative score value's for assignments in the course.
   #
   # Originally scores don't mean much because the points attributed are relative
   #   to the group. i.e. You can have an exam and a homework assignment both
@@ -93,6 +72,25 @@ calculate_true_score <- function(course_assignments, assignment_groups) {
 
 
 
+# Define a function for cumulative totals calculation
+calculate_cumulative_totals <- function(input_data) {
+  # Convert 'due_date' to a Date type
+  input_data$due_date <- as.Date(input_data$due_date)
+  
+  # Sort the data by 'due_date' to ensure proper cumulative calculation
+  input_data <- input_data %>%
+    arrange(due_date)
+  
+  # Calculate cumulative totals for relative 'score', 'mean', and 'upper'
+  result_data <- input_data %>%
+    mutate(
+      cumulative_score = cumsum(replace_na(relative_score, 0)),
+      cumulative_mean = cumsum(replace_na(relative_mean, 0)),
+      cumulative_upper = cumsum(replace_na(relative_upper, 0))
+    )
+  
+  return(result_data)
+}
 
 
 ## DATA ORGANIZATION / CLEANING ##
@@ -139,6 +137,11 @@ for (course_id in names(split_assignments)) {
     # Calculate true scores for the current course
     updated_course <- calculate_true_score(course, current_assignment_groups)
     
+    
+    updated_course$relative_score <- replace(updated_course$relative_score, 
+                                             is.infinite(updated_course$relative_score), 0)
+    
+    
     # Update the split_assignments with the calculated true scores
     split_assignments[[course_id]] <- updated_course
   } else {
@@ -148,48 +151,72 @@ for (course_id in names(split_assignments)) {
 }
 
 # testing sum of id
-sum(split_assignments[[as.character(529829)]]$relative_upper)
+sum(replace_na(split_assignments[[as.character(534512)]]$relative_mean, 0))
 
 
-
-# stuff
-
-result <- calculate_cumulative_totals(CEN3073)
-
-result_long <- result %>%
-  gather(key = "ScoreType", value = "CumulativeValue", CumulativeScore, CumulativeMean, CumulativeUpper) %>%
-  mutate(ScoreType = ifelse(ScoreType == "CumulativeScore", "My Score", ScoreType))
-
+for (i in seq_along(split_assignments)) {
+  split_assignments[[i]] <- calculate_cumulative_totals(split_assignments[[i]])
+}
 
 ### GRAPHING ###
 
+# Add the instructors name for their classes to be plotted
+instructor_name <- ""
+
+# Find the unique course_ids associated with the instructor
+instructor_courses <- unique(Class_Data$course_id[Class_Data$instructor == instructor_name])
 
 
-## TIME GRAPH ##
-# Plot the cumulative sums over time
-ggplot(result, aes(x = due_date)) +
-  geom_line(aes(y = CumulativeScore,
-                color = "MyScore"),
-            linetype = "solid",
-            size = 1) +
-  geom_line(aes(y = CumulativeMean,
-                color = "Mean"),
-            linetype = "dashed",
-            size = 1) +
-  geom_line(aes(y = CumulativeUpper,
-                color = "Upper"),
-            linetype = "dotted",
-            size = 1) +
-  labs(title = "CEN3073 Cumalitive Score over Time",
-       x = "Date",
-       y = "Cumulative Score",
-       color = "") +
-  theme_minimal()+
-  theme(legend.position = "bottom")+
-  scale_color_manual(values = c(MyScore = "blue", Mean = "green", Upper = "red"),
-                     labels = c(MyScore = "My Score", Mean = "Class Mean", Upper = "Upper Quadrant")) +
-  coord_cartesian(xlim = c(max(result$due_date) - 80, max(result$due_date)),
-                  ylim = c(0, 400))
+for (course_id in instructor_courses) {
+  
+  result <- split_assignments[[as.character(course_id)]]
+  
+  
+  # Extract the corresponding course_name
+  course_name <- Class_Data$course_name[Class_Data$course_id == course_id][1]
+  
+  # Extract the part after the final "-" mark
+  course_name <- tail(strsplit(course_name, " - ")[[1]], 1)
+
+  ## TIME GRAPH ##
+  # Plot the cumulative sums over time
+  ggplot_time <- ggplot(result, aes(x = due_date)) +
+    geom_line(aes(y = cumulative_score,
+                  color = "MyScore"),
+              linetype = "solid",
+              linewidth = 1) +
+    geom_line(aes(y = cumulative_mean,
+                  color = "Mean"),
+              linetype = "dashed",
+              linewidth = 1) +
+    geom_line(aes(y = cumulative_upper,
+                  color = "Upper"),
+              linetype = "dotted",
+              linewidth = 1) +
+    labs(title = paste(course_name, "Cumalitive Score over Time -", instructor_name),
+         x = "Date",
+         y = "Cumulative Score",
+         color = "") +
+    theme_minimal()+
+    theme(legend.position = "bottom")+
+    scale_color_manual(values = c(MyScore = "blue", Mean = "green", Upper = "red"),
+                       labels = c(MyScore = "My Score", Mean = "Class Mean", Upper = "Upper Quadrant")) +
+    coord_cartesian(ylim = c(0, 100))
+  # xlim = c(max(result$due_date) - 100, max(result$due_date)),
+  print(ggplot_time)
+  
+}
+
+
+
+## IDEAS
+# Cumulative sums showing which teacher was my best teacher
+# In that i was the highest above or closest to the upper quadrant
+
+# Boxplots showing how assignments performed for everyone
+# with geom points above that showing my performance
+
+
 
 
 
