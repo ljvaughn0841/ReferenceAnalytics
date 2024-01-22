@@ -53,6 +53,8 @@ def create_assignment_dict(course_dict):
                     'mean': score_stats.get('mean', None),
                     'upper': score_stats.get('upper_q', None),
                     'lower': score_stats.get('lower_q', None),
+                    'bottom': score_stats.get('min', None),
+                    'top': score_stats.get('max', None),
                     'max': assignment['points_possible'],
                     'group_id': assignment['assignment_group_id'],
                 }
@@ -127,6 +129,8 @@ if __name__ == '__main__':
                 "mean": details['mean'],
                 "upper": details['upper'],
                 "lower": details['lower'],
+                "top": details['top'],
+                "bottom": details['bottom'],
                 "maximum": details['max']
             }
             flat_data.append(row)
