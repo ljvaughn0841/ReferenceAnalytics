@@ -10,8 +10,24 @@ def print_dump(raw_response):
 
 
 def create_class_dict(raw_response):
-    # pick out the first (primary) teachers name and the course ID to place in a dictionary
-    # if there is no teacher for the class we can just forget about it
+    """
+    Reformat the raw JSON response from the Canvas API into a structured list of course dictionaries.
+
+    This function extracts and reorganizes course data to associate courses with their corresponding instructors.
+
+    :param raw_response: Raw JSON response from the Canvas API containing course information,
+        including instructors, in the following format:
+        {
+            "id": int,
+            "name": str,
+            "teachers": [{"id": int, "display_name": str, ...}, ...],
+            ...
+        }
+    :return: A list of dictionaries, where each dictionary represents a course with the keys:
+        - 'course_id' (int): The unique identifier for the course.
+        - 'course_name' (str): The name of the course.
+        - 'instructors' (list[str]): A list of instructor names associated with the course.
+"""
     output = []
     for course in raw_response.json():
         if course.get('teachers'):
@@ -20,11 +36,24 @@ def create_class_dict(raw_response):
                            'instructor': course['teachers'][0]['display_name']
                            }
             output.append(course_data)
+    # print(output)
     return output
 
 
 def create_assignment_dict(course_dict):
-    # Time for Assignments
+    """
+    Retrieve assignment information for the given courses.
+
+    :param course_dict: List of dictionaries, where each dictionary represents a course with the keys:
+        - 'course_id' (str): The unique identifier for the course.
+        - 'course_name' (str): The name of the course.
+        - 'instructor' (str): The name of the instructor.
+    :return: List of dictionaries representing graded assignments. Each dictionary contains:
+        - 'assignment_id' (str): The unique identifier for the assignment.
+        - 'course_id' (str): The ID of the course the assignment belongs to.
+        - 'title' (str): The title of the assignment.
+        - 'due_date' (str): The due date of the assignment in ISO 8601 format.
+"""
 
     course_assignments = {}
     for course in course_dict:
@@ -46,6 +75,8 @@ def create_assignment_dict(course_dict):
             score_stats = assignment.get('score_statistics', {})
             submission_stats = assignment.get('submission', {})
 
+            # This is to filter out extra credit or other ungraded assignments that the user didn't complete.
+            # Assumes user completes all graded assignments and receives a score for them.
             if submission_stats.get('score') is not None:
                 course_assignments[course['course_id']][assignment['name']] = {
                     'due_date': assignment['due_at'],
@@ -59,11 +90,27 @@ def create_assignment_dict(course_dict):
                     'group_id': assignment['assignment_group_id'],
                 }
 
-    pprint.pprint(course_assignments)
+    # pprint.pprint(course_assignments)
     return course_assignments
 
 
 def get_assignment_groups(course_list):
+    """
+    Retrieve assignment groupings and their weight values for the given courses.
+
+    This function processes a list of courses to extract assignment groupings (e.g., Homework, Exams, Final)
+    and their corresponding weight values.
+
+    :param course_list: A list of dictionaries, where each dictionary represents a course with the keys:
+        - 'course_id' (int): The unique identifier for the course.
+        - 'course_name' (str): The name of the course.
+        - 'instructors' (list[str]): A list of instructor names associated with the course.
+    :return: A list of dictionaries, where each dictionary contains:
+        - 'course_id' (int): The unique identifier for the course.
+        - 'group_id' (int): The unique identifier for the assignment group.
+        - 'group_name' (str): The name of the assignment group (e.g., Homework, Exams, Final).
+        - 'group_weight' (float): The weight of the assignment group as a fraction of the overall grade (out of 100.0).
+    """
     group_list = []
     for course in course_list:
         assignment_group_response = requests.get(
@@ -80,6 +127,16 @@ def get_assignment_groups(course_list):
 
 
 def curate_course_list(course_list, valid_instructors):
+    """
+    Filter the course list to include only courses taught by specified instructors.
+
+    :param course_list: A list of dictionaries, where each dictionary represents a course with the keys:
+        - 'course_id' (int): The unique identifier for the course.
+        - 'course_name' (str): The name of the course.
+        - 'instructors' (list[str]): A list of instructor names associated with the course.
+    :param valid_instructors: A list of instructor names (str) to include in the filtered results.
+    :return: A list of dictionaries representing courses taught by the specified instructors.
+    """
     filtered_courses = [course for course in course_list if course['instructor'] in valid_instructors]
     return filtered_courses
 
@@ -94,9 +151,12 @@ if __name__ == '__main__':
     courses_response = requests.get("https://" + school_domain_name + "/api/v1/courses?per_page=100&include[]=teachers",
                                     headers=headers)
 
+    #print_dump(courses_response)
+
     class_dictionary = create_class_dict(courses_response)
 
     # We don't need to collect data on every instructor since a lot of them are Gen Ed
+    # TODO: Make this its own function for user input for which instructors to examine.
     class_dictionary = curate_course_list(class_dictionary,
                                           ['Paul Allen', 'Fernando Gonzalez', 'Scott Vanselow', 'Josiah Greenwell'])
 
@@ -106,8 +166,8 @@ if __name__ == '__main__':
 
     assignments = create_assignment_dict(class_dictionary)
 
-    # I'm more familiar with data analysis in R, so I'm exporting some tables to work on there
-    # May later add some data analysis here in python if I have time
+    # TODO: Rather than handle things in R handle them in the python code.
+    # Then create web app frontend to make accessible.
 
     # Convert the list of dictionaries to pandas data frame
     df = pd.DataFrame(class_dictionary)
@@ -144,9 +204,3 @@ if __name__ == '__main__':
     # Converting assignment groups
     df = pd.DataFrame(assignment_groups)
     df.to_csv('assignment_groups.csv', index=False)
-
-    # Some data chart ideas
-    #   a line graph that shows points scored over time ( me vs. the mean or median, and upper quadrant)
-    #   standard bar graph of total points
-    #   something showing the difference between the submission date and due date
-    #   comparison of scores for all classes I had with a professor me vs mean vs upper quadrant
